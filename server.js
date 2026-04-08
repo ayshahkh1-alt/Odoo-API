@@ -1,17 +1,16 @@
 const express = require("express");
 const fetch = require("node-fetch");
-const cors = require("cors"); // <--- استدعاء المكتبة
+const cors = require("cors"); // مهم جداً للسماح لصفحة Odoo بالاتصال
 
 const app = express();
 app.use(express.json());
-app.use(cors()); 
+app.use(cors()); // تفعيل الـ CORS
 
 const ODOO_URL = "https://edu-mersal-florist.odoo.com";
 const DB = "edu-mersal-florist";
 const USER = "s12218704@stu.najah.edu";
-const PASS = "حمش@31571";
+const PASS = "حمش@31571"; // تأكد من صحة الباسورد
 
-// تسجيل الدخول وإرجاع session_id
 async function login() {
   const res = await fetch(`${ODOO_URL}/web/session/authenticate`, {
     method: "POST",
@@ -21,7 +20,6 @@ async function login() {
       params: { db: DB, login: USER, password: PASS }
     })
   });
-
   const data = await res.json();
   if (!data.result || !data.result.session_id) {
     throw new Error("Login failed");
@@ -29,13 +27,30 @@ async function login() {
   return data.result.session_id;
 }
 
-// API endpoint لاقتراح بوكيه
+// التعديل هنا: استقبال الباراميترات الجديدة
 app.post("/bouquets", async (req, res) => {
   try {
-    const { color, size } = req.body; // البيانات اللي جايه من الfrontend
+    // البيانات القادمة من الـ Frontend
+    const { flowerColor, wrapping, occasion, category, budget, extras } = req.body;
 
     const session = await login();
 
+    // بناء Domain للبحث في Odoo بناءً على الاختيارات
+    // ملاحظة: يجب التأكد من أن الحقول (x_color, x_wrapping) موجودة في Odoo
+    let domain = [];
+    
+    // مثال: إضافة فلتر اللون إذا تم اختياره
+    // نستخدم 'ilike' للبحث الجزئي أو '=' إذا كان الاسم مطابقاً تماماً
+    if (flowerColor) {
+        domain.push(["x_color", "ilike", flowerColor]); 
+    }
+    
+    // مثال: إضافة فلتر التغليف
+    if (wrapping) {
+        domain.push(["x_wrapping", "ilike", wrapping]);
+    }
+
+    // البحث في قالب المنتج (product.template)
     const response = await fetch(`${ODOO_URL}/web/dataset/call_kw/product.template/search_read`, {
       method: "POST",
       headers: {
@@ -50,27 +65,41 @@ app.post("/bouquets", async (req, res) => {
           method: "search_read",
           args: [],
           kwargs: {
-            domain: [
-              color ? ["x_color", "=", color] : [],
-              size ? ["x_size", "=", size] : []
-            ].filter(Boolean), // نتأكد ما في array فاضية
-            fields: ["name", "list_price", "image_1920"]
+            domain: domain, // تمرير الـ domain الذي بنيناه
+            fields: ["name", "list_price", "image_1920", "x_color", "x_wrapping"]
           }
         }
       })
     });
 
     const data = await response.json();
-    if (!data.result) return res.status(404).json({ error: "No bouquets found" });
+    
+    // معالجة النتيجة
+    let resultBouquet = null;
+    if (data.result && data.result.length > 0) {
+        // لو في نتائج، نختار أول واحد
+        const p = data.result[0];
+        resultBouquet = {
+            name: p.name,
+            price: p.list_price,
+            image: p.image_1920,
+            flowers: flowerColor || "متنوع",
+            wrap: wrapping || "افتراضي",
+            extras: extras ? extras.join(", ") : "لا يوجد"
+        };
+    } else {
+        // لو ما في نتائج، نرجع اقتراح افتراضي
+        resultBouquet = {
+            name: "بوكيه مخصص حسب الطلب",
+            price: "حسب المتطلبات",
+            image: null, // يمكن وضع صورة افتراضية هنا
+            flowers: flowerColor || "متنوع",
+            wrap: wrapping || "افتراضي",
+            extras: extras ? extras.join(", ") : "لا يوجد"
+        };
+    }
 
-    // نرسل فقط المعلومات المهمة
-    const bouquets = data.result.map(b => ({
-      name: b.name,
-      price: b.list_price,
-      image: b.image_1920
-    }));
-
-    res.json({ bouquets });
+    res.json(resultBouquet);
 
   } catch (error) {
     console.error(error);
