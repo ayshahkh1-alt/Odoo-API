@@ -1,8 +1,10 @@
 const express = require("express");
 const fetch = require("node-fetch");
+const cors = require("cors"); // <--- استدعاء المكتبة
 
 const app = express();
 app.use(express.json());
+app.use(cors()); 
 
 const ODOO_URL = "https://edu-mersal-florist.odoo.com";
 const DB = "edu-mersal-florist";
