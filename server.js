@@ -5,7 +5,7 @@ const app = express();
 app.use(express.json());
 
 const ODOO_URL = "https://edu-mersal-florist.odoo.com";
-const DB = "your_db";
+const DB = "edu-mersal-florist";
 const USER = "s12218704@stu.najah.edu";
 const PASS = "حمش@31571";
 
